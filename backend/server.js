@@ -1,10 +1,9 @@
-const path = require('path'); 
-const path = require('path'); 
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
+const path = require("path");
 require("dotenv").config();
 
 // Import routes
@@ -42,39 +41,28 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log("🔌 New client connected:", socket.id);
 
-  // Join a board room
   socket.on("join-board", (boardId) => {
     socket.join(boardId);
     console.log(`Client ${socket.id} joined board: ${boardId}`);
   });
 
-  // Leave a board room
   socket.on("leave-board", (boardId) => {
     socket.leave(boardId);
     console.log(`Client ${socket.id} left board: ${boardId}`);
   });
 
-  // Task updated event
   socket.on("task-updated", (data) => {
     socket.to(data.boardId).emit("task-updated", data);
   });
 
-  // Task created event
   socket.on("task-created", (data) => {
     socket.to(data.boardId).emit("task-created", data);
   });
 
-  // Task deleted event
   socket.on("task-deleted", (data) => {
     socket.to(data.boardId).emit("task-deleted", data);
   });
 
-  // List updated event
-  socket.on("list-updated", (data) => {
-    socket.to(data.boardId).emit("list-updated", data);
-  });
-
-  // Disconnect
   socket.on("disconnect", () => {
     console.log("🔌 Client disconnected:", socket.id);
   });
@@ -134,6 +122,15 @@ app.get("/", (req, res) => {
   });
 });
 
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+  
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+  });
+}
+
 // ========================
 // 404 HANDLER
 // ========================
@@ -170,25 +167,9 @@ mongoose.connect(process.env.MONGO_URI)
       console.log(`✅ Server running on http://localhost:${PORT}`);
       console.log(`📍 Test route: http://localhost:${PORT}/api/test`);
       console.log(`📍 Socket test: http://localhost:${PORT}/api/socket-test`);
-      console.log(`📍 Socket.IO ready for connections`);
     });
   })
   .catch((err) => {
     console.log("❌ MongoDB Connection Error:", err.message);
     process.exit(1);
-  }); 
-// Serve static assets in production 
-if (process.env.NODE_ENV === 'production') { 
-  app.use(express.static(path.join(__dirname, '../frontend/dist'))); 
-  app.get('*', (req, res) =
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html')); 
-  }); 
-} 
- 
-// Serve static assets in production 
-if (process.env.NODE_ENV === 'production') { 
-  app.use(express.static(path.join(__dirname, '../frontend/dist'))); 
-  app.get('*', (req, res) =
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html')); 
-  }); 
-} 
+  });
