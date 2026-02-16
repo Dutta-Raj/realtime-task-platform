@@ -4,6 +4,7 @@ const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
 const path = require("path");
+const fs = require("fs"); // Added for file system operations
 require("dotenv").config();
 
 // Import routes
@@ -126,20 +127,45 @@ app.get("/", (req, res) => {
 // SERVE STATIC ASSETS IN PRODUCTION - FIXED VERSION
 // ========================
 if (process.env.NODE_ENV === 'production') {
-  // Serve static files from the frontend dist directory
-  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+  // Define path to frontend dist folder
+  const frontendDistPath = path.join(__dirname, '../frontend/dist');
   
-  // For any route not matching /api, serve the index.html
-  // This uses a regex to match all routes except those starting with /api
-  app.get(/^(?!\/api).*/, (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-  });
+  // Check if frontend dist exists
+  try {
+    if (fs.existsSync(frontendDistPath)) {
+      // Serve static files from the frontend dist directory
+      app.use(express.static(frontendDistPath));
+      
+      // For any route not matching /api, serve the index.html
+      // This uses a regex to match all routes except those starting with /api
+      app.get(/^(?!\/api).*/, (req, res) => {
+        res.sendFile(path.join(frontendDistPath, 'index.html'));
+      });
+      
+      console.log("✅ Frontend static files will be served from:", frontendDistPath);
+    } else {
+      console.log("⚠️ Frontend dist folder not found at:", frontendDistPath);
+      console.log("⚠️ Running in API-only mode. Frontend must be deployed separately.");
+    }
+  } catch (err) {
+    console.log("⚠️ Could not check for frontend files - running in API-only mode");
+  }
 }
 
 // ========================
 // 404 HANDLER - Must come after all routes
 // ========================
 app.use((req, res) => {
+  // Don't return 404 for frontend routes in production if we're in API-only mode
+  if (process.env.NODE_ENV === 'production' && !req.path.startsWith('/api')) {
+    // In API-only mode, just return a message instead of 404
+    return res.status(200).json({ 
+      message: "Backend API is running. Frontend is deployed separately.",
+      backendUrl: "https://realtime-task-platform.onrender.com",
+      frontendUrl: "https://realtime-task-platform.vercel.app (if deployed)"
+    });
+  }
+  
   res.status(404).json({ 
     message: "Route not found",
     method: req.method,
@@ -172,6 +198,7 @@ mongoose.connect(process.env.MONGO_URI)
       console.log(`✅ Server running on http://localhost:${PORT}`);
       console.log(`📍 Test route: http://localhost:${PORT}/api/test`);
       console.log(`📍 Socket test: http://localhost:${PORT}/api/socket-test`);
+      console.log(`📍 Health check: https://realtime-task-platform.onrender.com/api/test`);
     });
   })
   .catch((err) => {
