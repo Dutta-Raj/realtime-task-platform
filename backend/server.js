@@ -122,17 +122,21 @@ app.get("/", (req, res) => {
   });
 });
 
-// Serve static assets in production
+// ========================
+// SERVE STATIC ASSETS IN PRODUCTION
+// ========================
 if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the frontend dist directory
   app.use(express.static(path.join(__dirname, '../frontend/dist')));
   
-  app.get('*', (req, res) => {
+  // Handle client-side routing - must come AFTER all API routes
+  app.get('/*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
   });
 }
 
 // ========================
-// 404 HANDLER
+// 404 HANDLER - Must come after all routes
 // ========================
 app.use((req, res) => {
   res.status(404).json({ 
