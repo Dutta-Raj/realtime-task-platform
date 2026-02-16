@@ -1,3 +1,5 @@
+const path = require('path'); 
+const path = require('path'); 
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -174,4 +176,19 @@ mongoose.connect(process.env.MONGO_URI)
   .catch((err) => {
     console.log("❌ MongoDB Connection Error:", err.message);
     process.exit(1);
-  });
+  }); 
+// Serve static assets in production 
+if (process.env.NODE_ENV === 'production') { 
+  app.use(express.static(path.join(__dirname, '../frontend/dist'))); 
+  app.get('*', (req, res) =
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html')); 
+  }); 
+} 
+ 
+// Serve static assets in production 
+if (process.env.NODE_ENV === 'production') { 
+  app.use(express.static(path.join(__dirname, '../frontend/dist'))); 
+  app.get('*', (req, res) =
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html')); 
+  }); 
+} 
