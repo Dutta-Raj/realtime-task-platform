@@ -123,14 +123,15 @@ app.get("/", (req, res) => {
 });
 
 // ========================
-// SERVE STATIC ASSETS IN PRODUCTION
+// SERVE STATIC ASSETS IN PRODUCTION - FIXED VERSION
 // ========================
 if (process.env.NODE_ENV === 'production') {
   // Serve static files from the frontend dist directory
   app.use(express.static(path.join(__dirname, '../frontend/dist')));
   
-  // Handle client-side routing - must come AFTER all API routes
-  app.get('/*', (req, res) => {
+  // For any route not matching /api, serve the index.html
+  // This uses a regex to match all routes except those starting with /api
+  app.get(/^(?!\/api).*/, (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
   });
 }
