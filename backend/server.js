@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
-const path = require("path");
 require("dotenv").config();
 
 // Import routes
@@ -17,22 +16,45 @@ const authMiddleware = require("./middleware/authMiddleware");
 
 const app = express();
 
-// CORS configuration
+// ========================
+// FIXED CORS CONFIGURATION - NO WILDCARDS
+// ========================
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://realtime-task-platform.netlify.app'
+];
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy does not allow access from this origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
+
+// DO NOT USE app.options('*', cors()) - THIS CAUSES THE ERROR
+// Remove that line completely
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Socket.IO setup
+// Create HTTP server
 const server = http.createServer(app);
+
+// Socket.IO setup
 const io = socketIo(server, {
   cors: {
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true
   }
@@ -57,11 +79,6 @@ app.use("/api/auth", authRoutes);
 app.use("/api/boards", authMiddleware, boardRoutes);
 app.use("/api/lists", authMiddleware, listRoutes);
 app.use("/api/tasks", authMiddleware, taskRoutes);
-
-// Socket test
-app.get("/api/socket-test", (req, res) => {
-  res.json({ message: "Socket.IO running", connections: io.engine.clientsCount });
-});
 
 // Home route
 app.get("/", (req, res) => {
