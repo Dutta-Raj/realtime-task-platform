@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const Board = require("../models/Board");
+const List = require("../models/List");
+const Task = require("../models/Task");
+const Activity = require("../models/Activity");
 
 // Get all boards
 router.get("/", async (req, res) => {
@@ -18,6 +21,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { title, description, background } = req.body;
+    
     const board = new Board({
       title,
       description: description || "",
@@ -25,7 +29,16 @@ router.post("/", async (req, res) => {
       owner: req.user.id,
       members: [req.user.id]
     });
+    
     await board.save();
+    
+    // Log activity
+    await Activity.create({
+      action: `Created board "${title}"`,
+      user: req.user.id,
+      board: board._id
+    });
+    
     res.status(201).json(board);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -43,6 +56,7 @@ router.get("/:id", async (req, res) => {
     if (!board.members.some(m => m._id.toString() === req.user.id)) {
       return res.status(403).json({ message: "Access denied" });
     }
+    
     res.json(board);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -64,34 +78,78 @@ router.put("/:id", async (req, res) => {
     if (background) board.background = background;
     
     await board.save();
+    
+    // Log activity
+    await Activity.create({
+      action: `Updated board "${board.title}"`,
+      user: req.user.id,
+      board: board._id
+    });
+    
     res.json(board);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ========================
-// DELETE BOARD - ADD THIS
-// ========================
+// Delete board
 router.delete("/:id", async (req, res) => {
   try {
-    console.log("🗑️ DELETE request for board:", req.params.id);
-    
     const board = await Board.findById(req.params.id);
-    
-    if (!board) {
-      return res.status(404).json({ message: "Board not found" });
-    }
-    
-    // Check if user is owner
+    if (!board) return res.status(404).json({ message: "Board not found" });
     if (board.owner.toString() !== req.user.id) {
       return res.status(403).json({ message: "Only owner can delete" });
     }
+    
+    // Log activity before deleting
+    await Activity.create({
+      action: `Deleted board "${board.title}"`,
+      user: req.user.id,
+      board: board._id
+    });
     
     await Board.findByIdAndDelete(req.params.id);
     res.json({ message: "Board deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================
+// ACTIVITY HISTORY ROUTE
+// ========================
+router.get("/:id/activity", async (req, res) => {
+  try {
+    const boardId = req.params.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+    
+    console.log("📋 Fetching activities for board:", boardId);
+    
+    // Get activities from database
+    const activities = await Activity.find({ board: boardId })
+      .populate("user", "name email")
+      .sort({ timestamp: -1 }) // Newest first
+      .skip(skip)
+      .limit(limit);
+    
+    const total = await Activity.countDocuments({ board: boardId });
+    
+    res.json({
+      success: true,
+      activities,
+      hasMore: total > skip + activities.length,
+      page,
+      limit,
+      total
+    });
+  } catch (err) {
+    console.error("❌ Error fetching activities:", err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message 
+    });
   }
 });
 

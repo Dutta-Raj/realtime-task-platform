@@ -17,30 +17,29 @@ export default function Board() {
   const [currentListId, setCurrentListId] = useState(null);
   const [newTask, setNewTask] = useState({ title: "", description: "" });
   
-  // Edit Task States
-  const [showEditTaskModal, setShowEditTaskModal] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
-  
   // Activity History States
   const [activities, setActivities] = useState([]);
-  const [activityPage, setActivityPage] = useState(1);
-  const [hasMoreActivities, setHasMoreActivities] = useState(true);
 
   useEffect(() => {
-    fetchBoardData();
-    fetchActivityHistory();
+    if (id) {
+      console.log("Board ID from URL:", id);
+      fetchBoardData();
+    }
   }, [id]);
 
   const fetchBoardData = async () => {
     try {
       setLoading(true);
       
+      // Fetch board details
       const boardRes = await API.get(`/boards/${id}`);
       setBoard(boardRes.data);
 
+      // Fetch lists
       const listsRes = await API.get(`/lists/board/${id}`);
       setLists(listsRes.data.sort((a, b) => a.order - b.order));
 
+      // Fetch tasks for each list
       const tasksData = {};
       await Promise.all(listsRes.data.map(async (list) => {
         try {
@@ -52,45 +51,32 @@ export default function Board() {
       }));
       setTasks(tasksData);
       
+      // Add initial activity
+      addActivity("Opened board");
+      
     } catch (error) {
+      console.error("Error loading board:", error);
       toast.error("Failed to load board");
-      navigate("/dashboard");
     } finally {
       setLoading(false);
     }
   };
 
   // ========================
-  // ACTIVITY HISTORY
+  // ACTIVITY HISTORY FUNCTIONS
   // ========================
-  const fetchActivityHistory = async (page = 1) => {
-    try {
-      const response = await API.get(`/boards/${id}/activity?page=${page}&limit=10`);
-      if (page === 1) {
-        setActivities(response.data.activities);
-      } else {
-        setActivities([...activities, ...response.data.activities]);
-      }
-      setHasMoreActivities(response.data.hasMore);
-      setActivityPage(page);
-    } catch (error) {
-      console.error("Failed to fetch activities:", error);
-    }
-  };
-
-  const loadMoreActivities = () => {
-    if (hasMoreActivities) {
-      fetchActivityHistory(activityPage + 1);
-    }
-  };
-
   const addActivity = (action) => {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
     const newActivity = {
-      action,
-      timestamp: new Date().toISOString(),
-      user: "Current User"
+      id: Date.now(),
+      action: action,
+      time: timeString,
+      timestamp: now
     };
-    setActivities([newActivity, ...activities]);
+    
+    setActivities(prev => [newActivity, ...prev].slice(0, 20));
   };
 
   // ========================
@@ -104,38 +90,54 @@ export default function Board() {
     }
 
     try {
+      console.log("Creating list:", newListTitle);
       const response = await API.post("/lists", {
         title: newListTitle,
         boardId: id,
         order: lists.length
       });
       
+      console.log("List created:", response.data);
       setLists([...lists, response.data]);
       setTasks({ ...tasks, [response.data._id]: [] });
       setNewListTitle("");
       setShowListModal(false);
       
-      addActivity(`Created list "${newListTitle}"`);
+      addActivity(`✅ Created list: "${newListTitle}"`);
       toast.success("List created");
     } catch (error) {
+      console.error("Error creating list:", error);
       toast.error("Failed to create list");
     }
   };
 
+  // ========================
+  // FIXED DELETE LIST FUNCTION
+  // ========================
   const deleteList = async (listId, listTitle) => {
-    if (!window.confirm("Delete this list and all its tasks?")) return;
+    if (!window.confirm(`Delete list "${listTitle}" and all its tasks?`)) return;
     
     try {
-      await API.delete(`/lists/${listId}`);
-      setLists(lists.filter(l => l._id !== listId));
-      const newTasks = { ...tasks };
-      delete newTasks[listId];
-      setTasks(newTasks);
+      console.log("🗑️ Deleting list with ID:", listId);
       
-      addActivity(`Deleted list "${listTitle}"`);
-      toast.success("List deleted");
+      const response = await API.delete(`/lists/${listId}`);
+      console.log("Delete response:", response.data);
+      
+      if (response.data.success) {
+        // Remove from UI
+        setLists(lists.filter(l => l._id !== listId));
+        
+        // Remove tasks for this list
+        const newTasks = { ...tasks };
+        delete newTasks[listId];
+        setTasks(newTasks);
+        
+        addActivity(`❌ Deleted list: "${listTitle}"`);
+        toast.success("List deleted successfully");
+      }
     } catch (error) {
-      toast.error("Failed to delete list");
+      console.error("Delete list error:", error);
+      toast.error(error.response?.data?.message || "Failed to delete list");
     }
   };
 
@@ -151,6 +153,7 @@ export default function Board() {
     if (!currentListId) return;
 
     try {
+      console.log("Creating task:", newTask);
       const response = await API.post("/tasks", {
         title: newTask.title,
         description: newTask.description,
@@ -159,6 +162,7 @@ export default function Board() {
         order: tasks[currentListId]?.length || 0
       });
       
+      console.log("Task created:", response.data);
       setTasks(prev => ({
         ...prev,
         [currentListId]: [...(prev[currentListId] || []), response.data]
@@ -168,71 +172,42 @@ export default function Board() {
       setShowTaskModal(false);
       setCurrentListId(null);
       
-      addActivity(`Created task "${newTask.title}"`);
+      addActivity(`📝 Created task: "${newTask.title}"`);
       toast.success("Task created");
     } catch (error) {
+      console.error("Error creating task:", error);
       toast.error("Failed to create task");
     }
   };
 
-  // ========================
-  // UPDATE TASK - ADDED
-  // ========================
-  const updateTask = async (e) => {
-    e.preventDefault();
-    if (!editingTask.title.trim()) {
-      toast.error("Task title is required");
-      return;
-    }
-
-    try {
-      const response = await API.put(`/tasks/${editingTask._id}`, {
-        title: editingTask.title,
-        description: editingTask.description
-      });
-      
-      setTasks(prev => ({
-        ...prev,
-        [editingTask.list]: prev[editingTask.list]?.map(t => 
-          t._id === editingTask._id ? response.data : t
-        )
-      }));
-      
-      setShowEditTaskModal(false);
-      setEditingTask(null);
-      
-      addActivity(`Updated task "${response.data.title}"`);
-      toast.success("Task updated");
-    } catch (error) {
-      toast.error("Failed to update task");
-    }
-  };
-
   const deleteTask = async (taskId, listId, taskTitle) => {
-    if (!window.confirm("Delete this task?")) return;
+    if (!window.confirm(`Delete task "${taskTitle}"?`)) return;
     
     try {
+      console.log("Deleting task:", taskId);
       await API.delete(`/tasks/${taskId}`);
       setTasks(prev => ({
         ...prev,
         [listId]: prev[listId]?.filter(t => t._id !== taskId)
       }));
       
-      addActivity(`Deleted task "${taskTitle}"`);
+      addActivity(`🗑️ Deleted task: "${taskTitle}"`);
       toast.success("Task deleted");
     } catch (error) {
+      console.error("Error deleting task:", error);
       toast.error("Failed to delete task");
     }
   };
 
   // ========================
-  // DRAG AND DROP
+  // DRAG AND DROP HANDLER
   // ========================
   const handleDragEnd = async (result) => {
     if (!result.destination) return;
 
     const { source, destination, type } = result;
 
+    // Handle list reordering
     if (type === 'list') {
       const newLists = Array.from(lists);
       const [removed] = newLists.splice(source.index, 1);
@@ -246,34 +221,36 @@ export default function Board() {
 
       try {
         await API.put(`/lists/${removed._id}`, { order: destination.index });
-        addActivity(`Reordered lists`);
+        addActivity(`🔄 Reordered lists`);
       } catch (error) {
         console.error("Failed to update list order:", error);
       }
       return;
     }
 
+    // Handle task reordering (within same list or between lists)
     const sourceListId = source.droppableId;
     const destListId = destination.droppableId;
     const taskId = result.draggableId;
 
+    // Get the task being moved
     const sourceTasks = Array.from(tasks[sourceListId] || []);
-    const destTasks = sourceListId === destListId ? sourceTasks : Array.from(tasks[destListId] || []);
-    
     const [movedTask] = sourceTasks.splice(source.index, 1);
     const taskTitle = movedTask.title;
-    
-    destTasks.splice(destination.index, 0, {
-      ...movedTask,
-      list: destListId
-    });
 
+    // If moving to same list
     if (sourceListId === destListId) {
+      sourceTasks.splice(destination.index, 0, movedTask);
       setTasks({
         ...tasks,
-        [sourceListId]: destTasks.map((task, index) => ({ ...task, order: index }))
+        [sourceListId]: sourceTasks.map((task, index) => ({ ...task, order: index }))
       });
-    } else {
+    } 
+    // If moving to different list
+    else {
+      const destTasks = Array.from(tasks[destListId] || []);
+      destTasks.splice(destination.index, 0, { ...movedTask, list: destListId });
+      
       setTasks({
         ...tasks,
         [sourceListId]: sourceTasks.map((task, index) => ({ ...task, order: index })),
@@ -281,17 +258,21 @@ export default function Board() {
       });
     }
 
+    // Update in backend
     try {
       await API.put(`/tasks/${movedTask._id}`, {
         listId: destListId,
         order: destination.index
       });
-      addActivity(`Moved task "${taskTitle}"`);
+      addActivity(`🔄 Moved task: "${taskTitle}"`);
     } catch (error) {
       console.error("Failed to update task position:", error);
     }
   };
 
+  // ========================
+  // RENDER
+  // ========================
   if (loading) {
     return (
       <div style={{ 
@@ -342,63 +323,79 @@ export default function Board() {
             ← Back
           </button>
           <span style={{ fontSize: "20px", fontWeight: "bold", color: "#4CAF50" }}>
-            {board?.title}
+            {board?.title || "Board"}
           </span>
         </div>
       </div>
 
-      {/* Main Content - Two Columns */}
-      <div style={{ 
-        maxWidth: "1400px", 
-        margin: "32px auto", 
-        padding: "0 16px",
-        display: "flex",
-        gap: "24px"
-      }}>
-        {/* Left Column - Lists */}
-        <div style={{ flex: 3 }}>
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <div style={{ overflowX: "auto" }}>
-              <Droppable droppableId="all-lists" direction="horizontal" type="list">
-                {(provided) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    style={{ 
-                      display: "flex", 
-                      gap: "20px", 
-                      padding: "8px 0 16px"
-                    }}
-                  >
-                    {lists.map((list, index) => (
-                      <Draggable key={list._id} draggableId={list._id} index={index}>
-                        {(provided) => (
+      {/* Drag and Drop Context */}
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div style={{ 
+          maxWidth: "1400px", 
+          margin: "32px auto", 
+          padding: "0 16px",
+          display: "flex",
+          gap: "24px"
+        }}>
+          {/* Left Column - Lists */}
+          <div style={{ flex: 3 }}>
+            <Droppable droppableId="all-lists" direction="horizontal" type="list">
+              {(provided) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  style={{ 
+                    display: "flex", 
+                    gap: "20px", 
+                    overflowX: "auto",
+                    padding: "8px 0 16px",
+                    minHeight: "500px"
+                  }}
+                >
+                  {lists.map((list, index) => (
+                    <Draggable key={list._id} draggableId={list._id} index={index}>
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          style={{
+                            background: "white",
+                            borderRadius: "8px",
+                            width: "300px",
+                            flexShrink: 0,
+                            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                            display: "flex",
+                            flexDirection: "column",
+                            maxHeight: "calc(100vh - 200px)",
+                            ...provided.draggableProps.style
+                          }}
+                        >
+                          {/* List Header with Drag Handle */}
                           <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
                             style={{
-                              background: "white",
-                              borderRadius: "8px",
-                              width: "300px",
-                              flexShrink: 0,
-                              boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                              ...provided.draggableProps.style
+                              padding: "16px",
+                              borderBottom: "1px solid #eee",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              background: "#f8f9fa",
+                              cursor: "grab"
                             }}
                           >
-                            {/* List Header */}
-                            <div
-                              {...provided.dragHandleProps}
-                              style={{
-                                padding: "16px",
-                                borderBottom: "1px solid #eee",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                cursor: "grab",
-                                background: "#f8f9fa"
-                              }}
-                            >
-                              <h3>{list.title}</h3>
+                            <h3 style={{ fontSize: "16px", fontWeight: "600", color: "#333" }}>
+                              {list.title}
+                            </h3>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{
+                                background: "#e5e7eb",
+                                color: "#4b5563",
+                                fontSize: "12px",
+                                padding: "2px 8px",
+                                borderRadius: "12px"
+                              }}>
+                                {tasks[list._id]?.length || 0}
+                              </span>
                               <button
                                 onClick={() => deleteList(list._id, list.title)}
                                 style={{
@@ -406,216 +403,203 @@ export default function Board() {
                                   border: "none",
                                   color: "#f44336",
                                   fontSize: "18px",
-                                  cursor: "pointer"
+                                  cursor: "pointer",
+                                  padding: "0 4px",
+                                  fontWeight: "bold"
                                 }}
+                                title="Delete list"
                               >
                                 ×
                               </button>
                             </div>
+                          </div>
 
-                            {/* Tasks */}
-                            <Droppable droppableId={list._id} type="task">
-                              {(provided) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.droppableProps}
-                                  style={{
-                                    padding: "12px",
-                                    minHeight: "100px"
-                                  }}
-                                >
-                                  {tasks[list._id]?.map((task, taskIndex) => (
-                                    <Draggable
-                                      key={task._id}
-                                      draggableId={task._id}
-                                      index={taskIndex}
-                                    >
-                                      {(provided) => (
-                                        <div
-                                          ref={provided.innerRef}
-                                          {...provided.draggableProps}
-                                          {...provided.dragHandleProps}
-                                          style={{
-                                            background: "#f9f9f9",
-                                            padding: "12px",
-                                            borderRadius: "6px",
-                                            marginBottom: "8px",
-                                            border: "1px solid #eee",
-                                            cursor: "grab",
-                                            ...provided.draggableProps.style
-                                          }}
-                                        >
-                                          <div>
-                                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                                              <h4 style={{ fontWeight: "600" }}>{task.title}</h4>
-                                              <div>
-                                                {/* Edit Task Button */}
-                                                <button
-                                                  onClick={() => {
-                                                    setEditingTask(task);
-                                                    setShowEditTaskModal(true);
-                                                  }}
-                                                  style={{
-                                                    background: "none",
-                                                    border: "none",
-                                                    color: "#4CAF50",
-                                                    marginRight: "8px",
-                                                    cursor: "pointer",
-                                                    fontSize: "14px"
-                                                  }}
-                                                >
-                                                  ✏️
-                                                </button>
-                                                <button
-                                                  onClick={() => deleteTask(task._id, list._id, task.title)}
-                                                  style={{
-                                                    background: "none",
-                                                    border: "none",
-                                                    color: "#f44336",
-                                                    cursor: "pointer",
-                                                    fontSize: "16px"
-                                                  }}
-                                                >
-                                                  ×
-                                                </button>
-                                              </div>
-                                            </div>
-                                            {task.description && (
-                                              <p style={{ fontSize: "12px", color: "#666" }}>
-                                                {task.description}
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </Draggable>
-                                  ))}
-                                  {provided.placeholder}
-                                </div>
-                              )}
-                            </Droppable>
-
-                            {/* Add Task Button */}
-                            <div style={{ padding: "12px", borderTop: "1px solid #eee" }}>
-                              <button
-                                onClick={() => {
-                                  setCurrentListId(list._id);
-                                  setShowTaskModal(true);
-                                }}
+                          {/* Tasks Container with Droppable */}
+                          <Droppable droppableId={list._id} type="task">
+                            {(provided) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
                                 style={{
-                                  width: "100%",
-                                  background: "none",
-                                  border: "none",
-                                  color: "#666",
-                                  cursor: "pointer",
-                                  padding: "6px"
+                                  padding: "12px",
+                                  overflowY: "auto",
+                                  flex: 1,
+                                  minHeight: "200px"
                                 }}
                               >
-                                + Add task
-                              </button>
-                            </div>
+                                {tasks[list._id]?.map((task, taskIndex) => (
+                                  <Draggable
+                                    key={task._id}
+                                    draggableId={task._id}
+                                    index={taskIndex}
+                                  >
+                                    {(provided) => (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        {...provided.dragHandleProps}
+                                        style={{
+                                          background: "#f9f9f9",
+                                          padding: "12px",
+                                          borderRadius: "6px",
+                                          marginBottom: "8px",
+                                          border: "1px solid #eee",
+                                          cursor: "grab",
+                                          ...provided.draggableProps.style
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                                          <h4 style={{ fontWeight: "600", fontSize: "14px", color: "#333" }}>
+                                            {task.title}
+                                          </h4>
+                                          <button
+                                            onClick={() => deleteTask(task._id, list._id, task.title)}
+                                            style={{
+                                              background: "none",
+                                              border: "none",
+                                              color: "#f44336",
+                                              cursor: "pointer",
+                                              fontSize: "16px",
+                                              fontWeight: "bold"
+                                            }}
+                                            title="Delete task"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                        {task.description && (
+                                          <p style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
+                                            {task.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                ))}
+                                {provided.placeholder}
+                                {(!tasks[list._id] || tasks[list._id].length === 0) && (
+                                  <p style={{ textAlign: "center", color: "#999", fontSize: "13px", padding: "20px 0" }}>
+                                    No tasks yet
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </Droppable>
+
+                          {/* Add Task Button */}
+                          <div style={{ padding: "12px", borderTop: "1px solid #eee" }}>
+                            <button
+                              onClick={() => {
+                                setCurrentListId(list._id);
+                                setShowTaskModal(true);
+                              }}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                background: "none",
+                                border: "none",
+                                color: "#666",
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                padding: "6px"
+                              }}
+                            >
+                              + Add task
+                            </button>
                           </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
 
-                    {/* Add List Button */}
-                    <button
-                      onClick={() => setShowListModal(true)}
-                      style={{
-                        background: "white",
-                        border: "2px dashed #ccc",
-                        borderRadius: "8px",
-                        width: "300px",
-                        padding: "16px",
-                        color: "#666",
-                        cursor: "pointer"
-                      }}
-                    >
-                      + Add list
-                    </button>
-                  </div>
-                )}
-              </Droppable>
-            </div>
-          </DragDropContext>
-        </div>
-
-        {/* Right Column - Activity History */}
-        <div style={{ 
-          flex: 1,
-          background: "white",
-          borderRadius: "8px",
-          padding: "20px",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-          height: "fit-content",
-          maxHeight: "600px",
-          overflowY: "auto"
-        }}>
-          <h3 style={{ 
-            marginBottom: "16px", 
-            color: "#333",
-            borderBottom: "2px solid #4CAF50",
-            paddingBottom: "8px"
-          }}>
-            Activity History
-          </h3>
-          
-          {activities.length === 0 ? (
-            <p style={{ color: "#999", textAlign: "center", padding: "20px" }}>
-              No activity yet
-            </p>
-          ) : (
-            <>
-              {activities.map((activity, index) => (
-                <div
-                  key={index}
-                  style={{
-                    padding: "12px",
-                    borderBottom: "1px solid #eee",
-                    fontSize: "13px"
-                  }}
-                >
-                  <div style={{ fontWeight: "500", marginBottom: "4px" }}>
-                    {activity.action}
-                  </div>
-                  <div style={{ 
-                    display: "flex", 
-                    justifyContent: "space-between",
-                    color: "#999",
-                    fontSize: "11px"
-                  }}>
-                    <span>{activity.user || "User"}</span>
-                    <span>
-                      {new Date(activity.timestamp).toLocaleString()}
-                    </span>
-                  </div>
+                  {/* Add List Button */}
+                  <button
+                    onClick={() => setShowListModal(true)}
+                    style={{
+                      background: "white",
+                      border: "2px dashed #ccc",
+                      borderRadius: "8px",
+                      width: "300px",
+                      flexShrink: 0,
+                      padding: "16px",
+                      color: "#666",
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "4px",
+                      height: "fit-content"
+                    }}
+                  >
+                    + Add list
+                  </button>
                 </div>
-              ))}
-              
-              {hasMoreActivities && (
-                <button
-                  onClick={loadMoreActivities}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    background: "#f5f5f5",
-                    border: "none",
-                    borderRadius: "4px",
-                    color: "#4CAF50",
-                    cursor: "pointer",
-                    marginTop: "12px",
-                    fontWeight: "500"
-                  }}
-                >
-                  Load More Activities
-                </button>
               )}
-            </>
-          )}
+            </Droppable>
+          </div>
+
+          {/* Right Column - Activity History */}
+          <div style={{ 
+            flex: 1,
+            background: "white",
+            borderRadius: "8px",
+            padding: "20px",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+            height: "fit-content",
+            maxHeight: "500px",
+            overflowY: "auto",
+            position: "sticky",
+            top: "20px"
+          }}>
+            <h3 style={{ 
+              marginBottom: "16px", 
+              color: "#333",
+              borderBottom: "2px solid #4CAF50",
+              paddingBottom: "8px",
+              fontSize: "16px",
+              fontWeight: "600"
+            }}>
+              Activity History
+            </h3>
+            
+            {activities.length === 0 ? (
+              <p style={{ color: "#999", textAlign: "center", padding: "20px" }}>
+                No activity yet. Create lists and tasks to see activity!
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {activities.map((activity) => (
+                  <div
+                    key={activity.id}
+                    style={{
+                      padding: "10px",
+                      background: "#f8f9fa",
+                      borderRadius: "4px",
+                      borderLeft: "3px solid #4CAF50"
+                    }}
+                  >
+                    <div style={{ fontWeight: "500", fontSize: "13px", color: "#333" }}>
+                      {activity.action}
+                    </div>
+                    <div style={{ 
+                      display: "flex", 
+                      justifyContent: "space-between",
+                      fontSize: "11px",
+                      color: "#999",
+                      marginTop: "4px"
+                    }}>
+                      <span>You</span>
+                      <span>{activity.time}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </DragDropContext>
 
       {/* Create List Modal */}
       {showListModal && (
@@ -638,7 +622,7 @@ export default function Board() {
             width: "90%", 
             padding: "24px" 
           }} onClick={e => e.stopPropagation()}>
-            <h3>Create New List</h3>
+            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "16px" }}>Create New List</h3>
             <form onSubmit={createList}>
               <input
                 type="text"
@@ -655,8 +639,34 @@ export default function Board() {
                 autoFocus
               />
               <div style={{ display: "flex", gap: "12px" }}>
-                <button type="button" onClick={() => setShowListModal(false)}>Cancel</button>
-                <button type="submit">Create</button>
+                <button 
+                  type="button" 
+                  onClick={() => setShowListModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    border: "1px solid #ddd",
+                    background: "white",
+                    borderRadius: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    background: "#4CAF50",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Create
+                </button>
               </div>
             </form>
           </div>
@@ -684,13 +694,12 @@ export default function Board() {
             width: "90%", 
             padding: "24px" 
           }} onClick={e => e.stopPropagation()}>
-            <h3>Create New Task</h3>
+            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "16px" }}>Create New Task</h3>
             <form onSubmit={createTask}>
               <input
                 type="text"
                 value={newTask.title}
                 onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                placeholder="Task title"
                 style={{
                   width: "100%",
                   padding: "10px",
@@ -698,12 +707,12 @@ export default function Board() {
                   border: "1px solid #ddd",
                   borderRadius: "4px"
                 }}
+                placeholder="Task title"
                 autoFocus
               />
               <textarea
                 value={newTask.description}
                 onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                placeholder="Description"
                 style={{
                   width: "100%",
                   padding: "10px",
@@ -712,69 +721,37 @@ export default function Board() {
                   borderRadius: "4px",
                   minHeight: "80px"
                 }}
+                placeholder="Description (optional)"
               />
               <div style={{ display: "flex", gap: "12px" }}>
-                <button type="button" onClick={() => setShowTaskModal(false)}>Cancel</button>
-                <button type="submit">Create</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Task Modal */}
-      {showEditTaskModal && editingTask && (
-        <div style={{ 
-          position: "fixed", 
-          top: 0, 
-          left: 0, 
-          right: 0, 
-          bottom: 0, 
-          background: "rgba(0,0,0,0.5)", 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "center", 
-          zIndex: 1000 
-        }} onClick={() => setShowEditTaskModal(false)}>
-          <div style={{ 
-            background: "white", 
-            borderRadius: "8px", 
-            maxWidth: "400px", 
-            width: "90%", 
-            padding: "24px" 
-          }} onClick={e => e.stopPropagation()}>
-            <h3>Edit Task</h3>
-            <form onSubmit={updateTask}>
-              <input
-                type="text"
-                value={editingTask.title}
-                onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })}
-                placeholder="Task title"
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  marginBottom: "12px",
-                  border: "1px solid #ddd",
-                  borderRadius: "4px"
-                }}
-                autoFocus
-              />
-              <textarea
-                value={editingTask.description || ''}
-                onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
-                placeholder="Description"
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  marginBottom: "16px",
-                  border: "1px solid #ddd",
-                  borderRadius: "4px",
-                  minHeight: "80px"
-                }}
-              />
-              <div style={{ display: "flex", gap: "12px" }}>
-                <button type="button" onClick={() => setShowEditTaskModal(false)}>Cancel</button>
-                <button type="submit">Update Task</button>
+                <button 
+                  type="button" 
+                  onClick={() => setShowTaskModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    border: "1px solid #ddd",
+                    background: "white",
+                    borderRadius: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    background: "#4CAF50",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Create
+                </button>
               </div>
             </form>
           </div>

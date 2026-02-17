@@ -4,7 +4,6 @@ const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
 const path = require("path");
-const fs = require("fs");
 require("dotenv").config();
 
 // Import routes
@@ -18,31 +17,23 @@ const authMiddleware = require("./middleware/authMiddleware");
 
 const app = express();
 
-// ========================
-// CORS CONFIGURATION - COMPLETELY FIXED
-// ========================
-// Simple CORS - no wildcards
+// CORS configuration
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://realtime-task-platform.netlify.app'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
-// No separate options handler - cors handles it
-
-// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Create HTTP server
-const server = http.createServer(app);
-
 // Socket.IO setup
+const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: ['http://localhost:5173', 'http://localhost:3000', 'https://realtime-task-platform.netlify.app'],
-    methods: ['GET', 'POST'],
+    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true
   }
 });
@@ -56,87 +47,59 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log("🔌 Client disconnected:", socket.id));
 });
 
-// ========================
-// TEST ROUTE
-// ========================
+// Test route
 app.get("/api/test", (req, res) => {
-  res.json({ success: true, message: "Test route working", timestamp: new Date().toISOString() });
+  res.json({ success: true, message: "API is working" });
 });
 
-// ========================
-// ROUTES
-// ========================
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/boards", authMiddleware, boardRoutes);
 app.use("/api/lists", authMiddleware, listRoutes);
 app.use("/api/tasks", authMiddleware, taskRoutes);
 
+// Socket test
 app.get("/api/socket-test", (req, res) => {
-  res.json({ message: "Socket.IO is running", activeConnections: io.engine.clientsCount });
+  res.json({ message: "Socket.IO running", connections: io.engine.clientsCount });
 });
 
+// Home route
 app.get("/", (req, res) => {
   res.json({
-    message: "🚀 Real-Time Task Platform API",
+    message: "TaskFlow API",
     status: "running",
     endpoints: {
-      test: "GET /api/test",
-      auth: "POST /api/auth/signup, POST /api/auth/login",
-      boards: "GET/POST /api/boards",
-      lists: "GET/POST /api/lists",
-      tasks: "GET/POST /api/tasks"
+      test: "/api/test",
+      auth: "/api/auth",
+      boards: "/api/boards",
+      lists: "/api/lists",
+      tasks: "/api/tasks"
     }
   });
 });
 
-// ========================
-// PRODUCTION STATIC FILES
-// ========================
-if (process.env.NODE_ENV === 'production') {
-  const frontendDistPath = path.join(__dirname, '../frontend/dist');
-  
-  try {
-    if (fs.existsSync(frontendDistPath)) {
-      app.use(express.static(frontendDistPath));
-      console.log("✅ Frontend static files will be served");
-    } else {
-      console.log("⚠️ Frontend dist not found - API-only mode");
-    }
-  } catch (err) {
-    console.log("⚠️ Frontend files check failed - API-only mode");
-  }
-}
-
-// ========================
-// 404 HANDLER - SIMPLE
-// ========================
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-// ========================
-// ERROR HANDLER
-// ========================
+// Error handler
 app.use((err, req, res, next) => {
-  console.error("❌ Error:", err);
-  res.status(500).json({ message: "Internal server error" });
+  console.error(err);
+  res.status(500).json({ message: "Server error" });
 });
 
-// ========================
-// DATABASE CONNECTION
-// ========================
+// Database connection
 const PORT = process.env.PORT || 5000;
-
-console.log("🔄 Connecting to MongoDB...");
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
-    console.log("✅ MongoDB Connected Successfully");
+    console.log("✅ MongoDB Connected");
     server.listen(PORT, () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
     });
   })
-  .catch((err) => {
-    console.log("❌ MongoDB Connection Error:", err.message);
+  .catch(err => {
+    console.log("❌ MongoDB Error:", err);
     process.exit(1);
   });

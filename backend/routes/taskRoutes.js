@@ -3,13 +3,18 @@ const router = express.Router();
 const Task = require("../models/Task");
 const List = require("../models/List");
 const Board = require("../models/Board");
+const Activity = require("../models/Activity");
 
-// Helper to get Socket.IO instance
-const getIO = (req) => req.app.get("io");
-
-// Test route
-router.get("/test", (req, res) => {
-  res.json({ message: "Task routes working" });
+// Get tasks by list
+router.get("/list/:listId", async (req, res) => {
+  try {
+    const tasks = await Task.find({ list: req.params.listId })
+      .sort({ order: 1 })
+      .populate("assignedTo", "name email");
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Create task
@@ -37,34 +42,16 @@ router.post("/", async (req, res) => {
     
     await task.save();
     
-    // Emit real-time event
-    const io = getIO(req);
-    io.to(task.board.toString()).emit("task-created", task);
+    // Log activity
+    await Activity.create({
+      action: `Created task "${title}"`,
+      user: req.user.id,
+      board: board._id,
+      list: listId,
+      task: task._id
+    });
     
     res.status(201).json(task);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Get tasks by list
-router.get("/list/:listId", async (req, res) => {
-  try {
-    const list = await List.findById(req.params.listId).populate("board");
-    if (!list) {
-      return res.status(404).json({ message: "List not found" });
-    }
-    
-    const board = list.board;
-    if (!board.members.includes(req.user.id)) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-    
-    const tasks = await Task.find({ list: req.params.listId })
-      .sort({ order: 1 })
-      .populate("assignedTo", "name email");
-    
-    res.json(tasks);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -88,6 +75,7 @@ router.put("/:id", async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
     
+    const oldTitle = task.title;
     if (title) task.title = title;
     if (description !== undefined) task.description = description;
     if (listId) task.list = listId;
@@ -96,9 +84,14 @@ router.put("/:id", async (req, res) => {
     
     await task.save();
     
-    // Emit real-time event
-    const io = getIO(req);
-    io.to(task.board.toString()).emit("task-updated", task);
+    // Log activity
+    await Activity.create({
+      action: `Updated task "${title || oldTitle}"`,
+      user: req.user.id,
+      board: board._id,
+      list: task.list._id,
+      task: task._id
+    });
     
     res.json(task);
   } catch (err) {
@@ -123,13 +116,15 @@ router.delete("/:id", async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
     
-    await task.deleteOne();
+    const taskTitle = task.title;
+    await Task.findByIdAndDelete(req.params.id);
     
-    // Emit real-time event
-    const io = getIO(req);
-    io.to(task.board.toString()).emit("task-deleted", { 
-      id: req.params.id, 
-      boardId: task.board 
+    // Log activity
+    await Activity.create({
+      action: `Deleted task "${taskTitle}"`,
+      user: req.user.id,
+      board: board._id,
+      list: task.list._id
     });
     
     res.json({ message: "Task deleted successfully" });
