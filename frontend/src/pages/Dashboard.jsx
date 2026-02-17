@@ -21,16 +21,13 @@ export default function Dashboard() {
       return;
     }
     fetchBoards();
-  }, [navigate]);
+  }, []);
 
   const fetchBoards = async () => {
     try {
-      console.log("📋 Fetching boards...");
       const response = await API.get("/boards");
-      console.log("✅ Boards fetched:", response.data);
       setBoards(response.data);
     } catch (error) {
-      console.error("❌ Fetch error:", error);
       toast.error("Failed to fetch boards");
     } finally {
       setLoading(false);
@@ -45,15 +42,12 @@ export default function Dashboard() {
     }
 
     try {
-      console.log("➕ Creating board:", newBoard);
       const response = await API.post("/boards", newBoard);
-      console.log("✅ Board created:", response.data);
       setBoards([...boards, response.data]);
       setShowModal(false);
       setNewBoard({ title: "", description: "", background: "#3b82f6" });
-      toast.success("Board created successfully");
+      toast.success("Board created");
     } catch (error) {
-      console.error("❌ Create error:", error);
       toast.error("Failed to create board");
     }
   };
@@ -62,30 +56,11 @@ export default function Dashboard() {
     if (!window.confirm("Are you sure you want to delete this board?")) return;
     
     try {
-      console.log("🗑️ Attempting to delete board:", boardId);
-      
-      const response = await API.delete(`/boards/${boardId}`);
-      console.log("✅ Delete response:", response.data);
-      
+      await API.delete(`/boards/${boardId}`);
       setBoards(boards.filter(b => b._id !== boardId));
-      toast.success("Board deleted successfully");
-      
+      toast.success("Board deleted");
     } catch (error) {
-      console.error("❌ Delete error:", error);
-      console.error("Error response:", error.response?.data);
-      
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        localStorage.removeItem("token");
-        setTimeout(() => navigate("/login"), 2000);
-      } else if (error.response?.status === 403) {
-        toast.error("You don't have permission to delete this board");
-      } else if (error.response?.status === 404) {
-        toast.error("Board not found. It may have been already deleted.");
-        fetchBoards();
-      } else {
-        toast.error(error.response?.data?.message || "Failed to delete board");
-      }
+      toast.error("Failed to delete board");
     }
   };
 
@@ -114,7 +89,7 @@ export default function Dashboard() {
             animation: "spin 1s linear infinite", 
             margin: "0 auto 16px" 
           }}></div>
-          <p style={{ color: "#6b7280" }}>Loading your boards...</p>
+          <p style={{ color: "#6b7280" }}>Loading...</p>
         </div>
       </div>
     );
@@ -145,8 +120,7 @@ export default function Dashboard() {
               border: "none", 
               padding: "6px 16px", 
               borderRadius: "4px", 
-              cursor: "pointer",
-              fontSize: "14px"
+              cursor: "pointer" 
             }}
           >
             Logout
@@ -164,10 +138,12 @@ export default function Dashboard() {
           boxShadow: "0 4px 6px rgba(0,0,0,0.1)", 
           marginBottom: "24px" 
         }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "600", color: "#1e3c72", marginBottom: "8px" }}>
+          <h1 style={{ fontSize: "28px", fontWeight: "600", color: "#1e3c72" }}>
             Welcome back, User!
           </h1>
-          <p style={{ color: "#666" }}>Here's what's happening with your projects today.</p>
+          <p style={{ color: "#666", marginTop: "8px" }}>
+            Here's what's happening with your projects today.
+          </p>
         </div>
 
         {/* Total Boards */}
@@ -198,8 +174,7 @@ export default function Dashboard() {
               border: "none", 
               padding: "8px 20px", 
               borderRadius: "4px", 
-              cursor: "pointer",
-              fontSize: "14px"
+              cursor: "pointer" 
             }}
           >
             + New Board
@@ -224,8 +199,7 @@ export default function Dashboard() {
                 border: "none", 
                 padding: "10px 24px", 
                 borderRadius: "4px", 
-                cursor: "pointer",
-                fontSize: "14px"
+                cursor: "pointer" 
               }}
             >
               Create First Board
@@ -267,6 +241,8 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </Link>
+                
+                {/* DELETE BUTTON - This was missing */}
                 <button
                   onClick={() => deleteBoard(board._id)}
                   style={{
@@ -324,8 +300,7 @@ export default function Dashboard() {
                   padding: "10px", 
                   marginBottom: "16px", 
                   border: "1px solid #ddd", 
-                  borderRadius: "4px",
-                  fontSize: "14px"
+                  borderRadius: "4px" 
                 }} 
                 placeholder="Board title" 
                 required 
@@ -339,7 +314,6 @@ export default function Dashboard() {
                   marginBottom: "16px", 
                   border: "1px solid #ddd", 
                   borderRadius: "4px",
-                  fontSize: "14px",
                   minHeight: "80px" 
                 }} 
                 placeholder="Description (optional)" 
@@ -354,8 +328,7 @@ export default function Dashboard() {
                     border: "1px solid #ddd", 
                     background: "white", 
                     borderRadius: "4px", 
-                    cursor: "pointer",
-                    fontSize: "14px"
+                    cursor: "pointer" 
                   }}
                 >
                   Cancel
@@ -369,8 +342,7 @@ export default function Dashboard() {
                     color: "white", 
                     border: "none", 
                     borderRadius: "4px", 
-                    cursor: "pointer",
-                    fontSize: "14px"
+                    cursor: "pointer" 
                   }}
                 >
                   Create Board

@@ -1,9 +1,7 @@
 import axios from 'axios';
 
-// Use environment variable or default to localhost for development
-const BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://realtime-task-platform.onrender.com/api'
-  : 'http://localhost:5000/api';
+// Use your Render backend URL
+const BASE_URL = 'https://realtime-task-platform.onrender.com/api';
 
 console.log('🔗 API Base URL:', BASE_URL);
 
@@ -15,22 +13,23 @@ const API = axios.create({
   }
 });
 
-// Add token to every request
+// Add token to every request - FIXED VERSION
 API.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     console.log(`📤 ${config.method.toUpperCase()} request to: ${config.url}`);
-    console.log('Token from localStorage:', token ? 'Present' : 'Not found');
+    console.log('Raw token from storage:', token);
     
     if (token) {
-      // Ensure token has Bearer prefix
-      config.headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-      console.log('✅ Token added to request headers');
+      // Try different token formats
+      // Format 1: Just the token
+      config.headers.Authorization = token;
+      console.log('✅ Token added without Bearer');
     }
     return config;
   },
   (error) => {
-    console.error('❌ Request interceptor error:', error);
+    console.error('❌ Request error:', error);
     return Promise.reject(error);
   }
 );
@@ -44,11 +43,15 @@ API.interceptors.response.use(
   (error) => {
     console.error('❌ Response error:', error.response?.status, error.response?.data);
     
-    if (error.response?.status === 401) {
-      console.log('🔒 Unauthorized! Token may be expired');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+    if (error.response?.status === 400) {
+      console.log('🔒 Token might be invalid. Trying alternative format...');
+      
+      // Try alternative token format
+      const token = localStorage.getItem('token');
+      if (token && !token.startsWith('Bearer ')) {
+        localStorage.setItem('token', `Bearer ${token}`);
+        console.log('✅ Token updated to Bearer format');
+      }
     }
     
     return Promise.reject(error);
