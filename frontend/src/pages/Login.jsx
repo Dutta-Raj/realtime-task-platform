@@ -1,117 +1,139 @@
-import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
+﻿import React, { useState } from "react";
+import API from "../services/api";
+import { useNavigate, Link } from "react-router-dom";
+import toast from "react-hot-toast";
 
-const Login = () => {
-  const [email, setEmail] = useState('raj@gmail.com');
-  const [password, setPassword] = useState('123456');
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const { login } = useAuth();
+export default function Login() {
   const navigate = useNavigate();
 
-  const validateForm = () => {
-    const newErrors = {};
-    if (!email) newErrors.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Email is invalid';
-    if (!password) newErrors.password = 'Password is required';
-    else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
-    return newErrors;
-  };
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    const newErrors = validateForm();
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+    
+    if (!email || !password) {
+      toast.error("Please fill in all fields");
       return;
     }
-    
+
     setLoading(true);
-    const success = await login(email, password);
-    setLoading(false);
-    if (success) {
-      toast.success('Welcome back! 🎉');
-      navigate('/dashboard');
+
+    try {
+      const res = await API.post("/auth/login", {
+        email,
+        password,
+      });
+
+      console.log("LOGIN RESPONSE:", res.data);
+
+      // Save token and user data
+      if (res.data.token) {
+        localStorage.setItem("token", res.data.token);
+      }
+      localStorage.setItem("user", JSON.stringify(res.data));
+
+      toast.success("Login Successful! 🎉");
+      
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 500);
+
+    } catch (err) {
+      console.log(err.response?.data);
+      const errorMsg = err.response?.data?.message || "Login failed";
+      toast.error(errorMsg);
+      
+      // Show demo credentials hint on error
+      if (errorMsg.includes("Invalid") || errorMsg.includes("not found")) {
+        toast(
+          <div>
+            <p>Try demo account:</p>
+            <p className="font-mono text-sm">raj@gmail.com / 123456</p>
+          </div>,
+          { duration: 5000 }
+        );
+      }
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const fillDemoCredentials = () => {
+    setEmail("raj@gmail.com");
+    setPassword("123456");
+    toast.success("Demo credentials filled!");
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-    }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 fade-in">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold gradient-text mb-2">TaskFlow</h1>
-          <p className="text-gray-600">Welcome back! Please login to your account.</p>
-        </div>
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2>Login</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address
-            </label>
+        <form onSubmit={handleLogin}>
+          <div className="input-group">
             <input
               type="email"
+              placeholder="Enter email"
               value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setErrors({ ...errors, email: null });
-              }}
-              className={`input-field ${errors.email ? 'error' : ''}`}
-              placeholder="Enter your email"
+              onChange={(e) => setEmail(e.target.value)}
+              required
             />
-            {errors.email && (
-              <p className="mt-1 text-sm text-red-500">{errors.email}</p>
-            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
+          <div className="input-group">
             <input
               type="password"
+              placeholder="Enter password"
               value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setErrors({ ...errors, password: null });
-              }}
-              className={`input-field ${errors.password ? 'error' : ''}`}
-              placeholder="Enter your password"
+              onChange={(e) => setPassword(e.target.value)}
+              required
             />
-            {errors.password && (
-              <p className="mt-1 text-sm text-red-500">{errors.password}</p>
-            )}
           </div>
 
-          <button
-            type="submit"
+          <button 
+            className="auth-button" 
+            type="submit" 
             disabled={loading}
-            className="btn-primary w-full flex items-center justify-center gap-2"
           >
-            {loading ? (
-              <>
-                <div className="spinner w-5 h-5"></div>
-                <span>Logging in...</span>
-              </>
-            ) : (
-              'Login'
-            )}
+            {loading ? "LOGGING IN..." : "LOGIN"}
           </button>
         </form>
 
-        <p className="text-center mt-6 text-gray-600">
-          Don't have an account?{' '}
-          <Link to="/signup" className="text-indigo-600 hover:text-indigo-700 font-medium">
-            Sign up
-          </Link>
+        {/* Demo Credentials Hint */}
+        <div style={{ 
+          marginTop: "15px", 
+          padding: "10px", 
+          background: "#f0f0f0", 
+          borderRadius: "5px",
+          fontSize: "14px"
+        }}>
+          <p style={{ margin: "0 0 5px 0", fontWeight: "bold" }}>Demo Credentials:</p>
+          <p style={{ margin: "0", color: "#555" }}>
+            Email: <strong>raj@gmail.com</strong> | Password: <strong>123456</strong>
+          </p>
+          <button
+            onClick={fillDemoCredentials}
+            style={{
+              marginTop: "8px",
+              padding: "5px 10px",
+              background: "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "3px",
+              cursor: "pointer",
+              fontSize: "12px"
+            }}
+          >
+            Use Demo Account
+          </button>
+        </div>
+
+        <p className="switch-text">
+          Don't have account? <Link to="/signup">Sign Up</Link>
         </p>
       </div>
     </div>
   );
-};
-
-export default Login;
+}

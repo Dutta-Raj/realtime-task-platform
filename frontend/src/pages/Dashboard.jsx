@@ -1,26 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import API from '../services/api';
-import { Link } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from "react";
+import API from "../services/api";
+import { useNavigate, Link } from "react-router-dom";
+import toast from "react-hot-toast";
 
-const Dashboard = () => {
+export default function Dashboard() {
+  const navigate = useNavigate();
   const [boards, setBoards] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [newBoard, setNewBoard] = useState({ title: '', description: '', background: '#667eea' });
   const [loading, setLoading] = useState(true);
-  const { user, logout } = useAuth();
+  const [showModal, setShowModal] = useState(false);
+  const [newBoard, setNewBoard] = useState({
+    title: "",
+    description: "",
+    background: "#3b82f6"
+  });
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/login");
+      return;
+    }
     fetchBoards();
-  }, []);
+  }, [navigate]);
 
   const fetchBoards = async () => {
     try {
-      const { data } = await API.get('/boards');
-      setBoards(data);
+      console.log("📋 Fetching boards...");
+      const response = await API.get("/boards");
+      console.log("✅ Boards fetched:", response.data);
+      setBoards(response.data);
     } catch (error) {
-      toast.error('Failed to fetch boards');
+      console.error("❌ Fetch error:", error);
+      toast.error("Failed to fetch boards");
     } finally {
       setLoading(false);
     }
@@ -28,136 +39,254 @@ const Dashboard = () => {
 
   const createBoard = async (e) => {
     e.preventDefault();
-    try {
-      const { data } = await API.post('/boards', newBoard);
-      setBoards([...boards, data]);
-      setShowModal(false);
-      setNewBoard({ title: '', description: '', background: '#667eea' });
-      toast.success('Board created successfully! 🎉');
-    } catch (error) {
-      toast.error('Failed to create board');
+    if (!newBoard.title.trim()) {
+      toast.error("Title is required");
+      return;
     }
+
+    try {
+      console.log("➕ Creating board:", newBoard);
+      const response = await API.post("/boards", newBoard);
+      console.log("✅ Board created:", response.data);
+      setBoards([...boards, response.data]);
+      setShowModal(false);
+      setNewBoard({ title: "", description: "", background: "#3b82f6" });
+      toast.success("Board created successfully");
+    } catch (error) {
+      console.error("❌ Create error:", error);
+      toast.error("Failed to create board");
+    }
+  };
+
+  const deleteBoard = async (boardId) => {
+    if (!window.confirm("Are you sure you want to delete this board?")) return;
+    
+    try {
+      console.log("🗑️ Attempting to delete board:", boardId);
+      
+      const response = await API.delete(`/boards/${boardId}`);
+      console.log("✅ Delete response:", response.data);
+      
+      setBoards(boards.filter(b => b._id !== boardId));
+      toast.success("Board deleted successfully");
+      
+    } catch (error) {
+      console.error("❌ Delete error:", error);
+      console.error("Error response:", error.response?.data);
+      
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+        localStorage.removeItem("token");
+        setTimeout(() => navigate("/login"), 2000);
+      } else if (error.response?.status === 403) {
+        toast.error("You don't have permission to delete this board");
+      } else if (error.response?.status === 404) {
+        toast.error("Board not found. It may have been already deleted.");
+        fetchBoards();
+      } else {
+        toast.error(error.response?.data?.message || "Failed to delete board");
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login");
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      <div style={{ 
+        minHeight: "100vh", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center", 
+        background: "#f5f5f5" 
       }}>
-        <div className="spinner"></div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ 
+            width: "48px", 
+            height: "48px", 
+            border: "4px solid #e5e7eb", 
+            borderTopColor: "#3b82f6", 
+            borderRadius: "50%", 
+            animation: "spin 1s linear infinite", 
+            margin: "0 auto 16px" 
+          }}></div>
+          <p style={{ color: "#6b7280" }}>Loading your boards...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ minHeight: "100vh", background: "#f5f5f5" }}>
       {/* Header */}
-      <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-8">
-              <h1 className="text-2xl font-bold gradient-text">TaskFlow</h1>
-              <div className="hidden md:flex space-x-4">
-                <span className="text-gray-600">Dashboard</span>
-                <span className="text-gray-400">|</span>
-                <span className="text-gray-600">Boards</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="member-avatar">
-                  {user?.name?.[0] || 'U'}
-                </div>
-                <span className="text-gray-700 font-medium hidden md:block">
-                  {user?.name || 'User'}
-                </span>
-              </div>
-              <button 
-                onClick={logout} 
-                className="btn-secondary"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
+      <div style={{ 
+        background: "#1e3c72", 
+        color: "white", 
+        padding: "16px 32px", 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center" 
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "24px", fontWeight: "bold", color: "#4CAF50" }}>TaskFlow</span>
+          <span style={{ fontSize: "14px", color: "#ccc" }}>| Dashboard</span>
         </div>
-      </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <span style={{ fontSize: "14px" }}>Welcome, User!</span>
+          <button 
+            onClick={handleLogout} 
+            style={{ 
+              background: "#f44336", 
+              color: "white", 
+              border: "none", 
+              padding: "6px 16px", 
+              borderRadius: "4px", 
+              cursor: "pointer",
+              fontSize: "14px"
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
-        {/* Header Section */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-2">Your Boards</h2>
-            <p className="text-gray-600">Manage your projects and tasks efficiently</p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="btn-primary flex items-center gap-2"
+      <div style={{ maxWidth: "1200px", margin: "32px auto", padding: "0 16px" }}>
+        {/* Welcome Card */}
+        <div style={{ 
+          background: "white", 
+          padding: "32px", 
+          borderRadius: "8px", 
+          boxShadow: "0 4px 6px rgba(0,0,0,0.1)", 
+          marginBottom: "24px" 
+        }}>
+          <h1 style={{ fontSize: "28px", fontWeight: "600", color: "#1e3c72", marginBottom: "8px" }}>
+            Welcome back, User!
+          </h1>
+          <p style={{ color: "#666" }}>Here's what's happening with your projects today.</p>
+        </div>
+
+        {/* Total Boards */}
+        <div style={{ 
+          background: "white", 
+          padding: "24px", 
+          borderRadius: "8px", 
+          boxShadow: "0 4px 6px rgba(0,0,0,0.1)", 
+          marginBottom: "32px" 
+        }}>
+          <h3 style={{ color: "#666", fontSize: "16px", marginBottom: "8px" }}>Total Boards</h3>
+          <p style={{ fontSize: "32px", fontWeight: "bold", color: "#4CAF50" }}>{boards.length}</p>
+        </div>
+
+        {/* Your Boards Header */}
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center", 
+          marginBottom: "16px" 
+        }}>
+          <h2 style={{ fontSize: "20px", fontWeight: "600", color: "#1e3c72" }}>Your Boards</h2>
+          <button 
+            onClick={() => setShowModal(true)} 
+            style={{ 
+              background: "#4CAF50", 
+              color: "white", 
+              border: "none", 
+              padding: "8px 20px", 
+              borderRadius: "4px", 
+              cursor: "pointer",
+              fontSize: "14px"
+            }}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-            </svg>
-            New Board
+            + New Board
           </button>
         </div>
 
         {/* Boards Grid */}
         {boards.length === 0 ? (
-          <div className="text-center py-16">
-            <svg className="w-24 h-24 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V5m12 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2z" />
-            </svg>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No boards yet</h3>
-            <p className="text-gray-500 mb-6">Create your first board to get started</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="btn-primary"
+          <div style={{ 
+            background: "white", 
+            padding: "48px", 
+            textAlign: "center", 
+            border: "2px dashed #ccc", 
+            borderRadius: "8px" 
+          }}>
+            <p style={{ color: "#999", marginBottom: "16px" }}>No boards yet. Create your first board!</p>
+            <button 
+              onClick={() => setShowModal(true)} 
+              style={{ 
+                background: "#4CAF50", 
+                color: "white", 
+                border: "none", 
+                padding: "10px 24px", 
+                borderRadius: "4px", 
+                cursor: "pointer",
+                fontSize: "14px"
+              }}
             >
-              Create Your First Board
+              Create First Board
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {boards.map((board, index) => (
-              <Link to={`/board/${board._id}`} key={board._id} style={{ animationDelay: `${index * 0.1}s` }} className="fade-in">
-                <div className="board-card group">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-lg" style={{ backgroundColor: board.background || '#667eea' }}></div>
-                    <div className="flex -space-x-2">
-                      {board.members?.slice(0, 3).map((member, i) => (
-                        <div
-                          key={i}
-                          className="member-avatar"
-                          title={member?.name}
-                        >
-                          {member?.name?.[0] || 'U'}
-                        </div>
-                      ))}
-                      {(board.members?.length || 0) > 3 && (
-                        <div className="member-avatar bg-gray-400">
-                          +{board.members.length - 3}
-                        </div>
-                      )}
-                    </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
+            {boards.map((board) => (
+              <div 
+                key={board._id} 
+                style={{ 
+                  background: "white", 
+                  borderRadius: "8px", 
+                  overflow: "hidden", 
+                  boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                  position: "relative"
+                }}
+              >
+                <Link to={`/board/${board._id}`} style={{ textDecoration: "none" }}>
+                  <div style={{ 
+                    height: "120px", 
+                    background: board.background || "#3b82f6" 
+                  }}></div>
+                  <div style={{ padding: "16px" }}>
+                    <h3 style={{ 
+                      fontSize: "18px", 
+                      fontWeight: "600", 
+                      color: "#333", 
+                      marginBottom: "8px" 
+                    }}>
+                      {board.title}
+                    </h3>
+                    <p style={{ 
+                      fontSize: "14px", 
+                      color: "#666", 
+                      marginBottom: "12px" 
+                    }}>
+                      {board.description || "No description"}
+                    </p>
                   </div>
-                  <h3 className="font-bold text-lg text-gray-800 mb-2 group-hover:text-indigo-600 transition">
-                    {board.title}
-                  </h3>
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">{board.description}</p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">
-                      {new Date(board.createdAt).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </span>
-                    <span className="text-indigo-600 font-medium group-hover:translate-x-2 transition-transform">
-                      View Board →
-                    </span>
-                  </div>
-                </div>
-              </Link>
+                </Link>
+                <button
+                  onClick={() => deleteBoard(board._id)}
+                  style={{
+                    position: "absolute",
+                    top: "8px",
+                    right: "8px",
+                    background: "#f44336",
+                    color: "white",
+                    border: "none",
+                    padding: "6px 12px",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    zIndex: 10
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -165,55 +294,85 @@ const Dashboard = () => {
 
       {/* Create Board Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h3 className="text-2xl font-bold text-gray-800 mb-6">Create New Board</h3>
+        <div style={{ 
+          position: "fixed", 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          background: "rgba(0,0,0,0.5)", 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center", 
+          zIndex: 1000 
+        }} onClick={() => setShowModal(false)}>
+          <div style={{ 
+            background: "white", 
+            borderRadius: "8px", 
+            maxWidth: "450px", 
+            width: "90%", 
+            padding: "24px" 
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: "20px", fontWeight: "600", marginBottom: "20px" }}>Create New Board</h3>
             <form onSubmit={createBoard}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Board Title
-                </label>
-                <input
-                  type="text"
-                  value={newBoard.title}
-                  onChange={(e) => setNewBoard({ ...newBoard, title: e.target.value })}
-                  className="input-field"
-                  placeholder="e.g., Project Management"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={newBoard.description}
-                  onChange={(e) => setNewBoard({ ...newBoard, description: e.target.value })}
-                  className="input-field"
-                  placeholder="What's this board about?"
-                  rows="3"
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Board Color
-                </label>
-                <input
-                  type="color"
-                  value={newBoard.background}
-                  onChange={(e) => setNewBoard({ ...newBoard, background: e.target.value })}
-                  className="w-full h-12 rounded-lg border-2 border-gray-200 cursor-pointer"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 btn-secondary"
+              <input 
+                type="text" 
+                value={newBoard.title} 
+                onChange={(e) => setNewBoard({...newBoard, title: e.target.value})} 
+                style={{ 
+                  width: "100%", 
+                  padding: "10px", 
+                  marginBottom: "16px", 
+                  border: "1px solid #ddd", 
+                  borderRadius: "4px",
+                  fontSize: "14px"
+                }} 
+                placeholder="Board title" 
+                required 
+              />
+              <textarea 
+                value={newBoard.description} 
+                onChange={(e) => setNewBoard({...newBoard, description: e.target.value})} 
+                style={{ 
+                  width: "100%", 
+                  padding: "10px", 
+                  marginBottom: "16px", 
+                  border: "1px solid #ddd", 
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  minHeight: "80px" 
+                }} 
+                placeholder="Description (optional)" 
+              />
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowModal(false)} 
+                  style={{ 
+                    flex: 1, 
+                    padding: "10px", 
+                    border: "1px solid #ddd", 
+                    background: "white", 
+                    borderRadius: "4px", 
+                    cursor: "pointer",
+                    fontSize: "14px"
+                  }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button 
+                  type="submit" 
+                  style={{ 
+                    flex: 1, 
+                    padding: "10px", 
+                    background: "#4CAF50", 
+                    color: "white", 
+                    border: "none", 
+                    borderRadius: "4px", 
+                    cursor: "pointer",
+                    fontSize: "14px"
+                  }}
+                >
                   Create Board
                 </button>
               </div>
@@ -221,8 +380,12 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes spin { 
+          to { transform: rotate(360deg); } 
+        }
+      `}</style>
     </div>
   );
-};
-
-export default Dashboard;
+}

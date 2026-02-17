@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+﻿import React, { createContext, useState, useContext, useEffect } from 'react';
 import API from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -13,46 +13,44 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      fetchUser();
-    } else {
-      setLoading(false);
+      // Fetch user details if needed
+      setUser({ name: 'User' });
     }
+    setLoading(false);
   }, [token]);
-
-  const fetchUser = async () => {
-    try {
-      // For now, just set user from token
-      // You can add a /auth/me endpoint later
-      setUser({ id: 'user', name: 'User' });
-    } catch (error) {
-      localStorage.removeItem('token');
-      setToken(null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const login = async (email, password) => {
     try {
-      const { data } = await API.post('/auth/login', { email, password });
-      localStorage.setItem('token', data.token);
-      setToken(data.token);
-      setUser({ id: data.userId, email, name: email.split('@')[0] });
-      toast.success('Login successful!');
+      console.log('Attempting login with:', { email, password });
+      const response = await API.post('/auth/login', { email, password });
+      console.log('Login response:', response.data);
+      
+      const { token, userId } = response.data;
+      localStorage.setItem('token', token);
+      setToken(token);
+      setUser({ id: userId, email, name: email.split('@')[0] });
+      toast.success('Login successful! 🎉');
       return true;
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      console.error('Login error:', error.response?.data || error.message);
+      const errorMsg = error.response?.data?.message || 'Login failed';
+      toast.error(errorMsg);
       return false;
     }
   };
 
   const signup = async (name, email, password) => {
     try {
-      await API.post('/auth/signup', { name, email, password });
-      toast.success('Signup successful! Please login.');
+      console.log('Attempting signup with:', { name, email, password });
+      const response = await API.post('/auth/signup', { name, email, password });
+      console.log('Signup response:', response.data);
+      
+      toast.success('Account created successfully! Please login.');
       return true;
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Signup failed');
+      console.error('Signup error:', error.response?.data || error.message);
+      const errorMsg = error.response?.data?.message || 'Signup failed';
+      toast.error(errorMsg);
       return false;
     }
   };
@@ -61,7 +59,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
-    toast.success('Logged out successfully');
+    toast.success('Logged out');
   };
 
   return (
